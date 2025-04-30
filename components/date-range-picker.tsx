@@ -12,13 +12,20 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 
 interface DatePickerWithRangeProps extends React.HTMLAttributes<HTMLDivElement> {
   className?: string
+  onDateChange?: (date: DateRange | undefined) => void
 }
 
-export function DatePickerWithRange({ className, ...props }: DatePickerWithRangeProps) {
+export function DatePickerWithRange({ className, onDateChange, ...props }: DatePickerWithRangeProps) {
   const [date, setDate] = React.useState<DateRange | undefined>({
-    from: new Date(2023, 10, 1),
+    from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     to: new Date(),
   })
+
+  React.useEffect(() => {
+    if (onDateChange) {
+      onDateChange(date)
+    }
+  }, [date, onDateChange])
 
   return (
     <div className={cn("grid gap-2", className)} {...props}>

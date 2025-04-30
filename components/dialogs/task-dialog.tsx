@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -26,26 +26,134 @@ import { cn } from "@/lib/utils"
 interface TaskDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  projects: any[]
+  onTaskAdded?: () => void
 }
 
-export function TaskDialog({ open, onOpenChange }: TaskDialogProps) {
+export function TaskDialog({ open, onOpenChange, projects = [], onTaskAdded }: TaskDialogProps) {
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [dueDate, setDueDate] = useState<Date>()
+  const [employees, setEmployees] = useState([])
+  const [subProjects, setSubProjects] = useState<string[]>([])
+
+  const [formData, setFormData] = useState({
+    name: "",
+    projectId: "",
+    project: "",
+    subProject: "",
+    assignedTo: "",
+    estimatedTime: "",
+    priority: "",
+    description: "",
+  })
+
+  useEffect(() => {
+    if (open) {
+      fetchEmployees()
+    }
+  }, [open])
+
+  useEffect(() => {
+    // Update sub projects when project changes
+    if (formData.projectId) {
+      const selectedProject = projects.find((p) => p._id === formData.projectId)
+      if (selectedProject && selectedProject.subProjects) {
+        setSubProjects(selectedProject.subProjects)
+        setFormData((prev) => ({ ...prev, project: selectedProject.name }))
+      } else {
+        setSubProjects([])
+      }
+    } else {
+      setSubProjects([])
+    }
+  }, [formData.projectId, projects])
+
+  const fetchEmployees = async () => {
+    try {
+      const response = await fetch("/api/employees")
+      if (!response.ok) throw new Error("Failed to fetch employees")
+      const data = await response.json()
+      setEmployees(data)
+    } catch (error) {
+      console.error("Error fetching employees:", error)
+    }
+  }
+
+  const handleChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!dueDate) {
+      toast({
+        variant: "destructive",
+        title: "Missing due date",
+        description: "Please select a due date for the task.",
+      })
+      return
+    }
+
     setIsSubmitting(true)
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const taskData = {
+        name: formData.name,
+        projectId: formData.projectId,
+        project: formData.project,
+        subProject: formData.subProject,
+        assignedTo: formData.assignedTo,
+        estimatedTime: Number.parseFloat(formData.estimatedTime),
+        actualTime: 0,
+        aiUsed: false,
+        status: "To Do",
+        dueDate: dueDate,
+        priority: formData.priority,
+        description: formData.description,
+      }
+
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(taskData),
+      })
+
+      if (!response.ok) throw new Error("Failed to add task")
+
       toast({
-        title: "Task created successfully",
+        title: "Task added successfully",
         description: "The new task has been added to the system.",
       })
-      setIsSubmitting(false)
+
+      // Reset form
+      setFormData({
+        name: "",
+        projectId: "",
+        project: "",
+        subProject: "",
+        assignedTo: "",
+        estimatedTime: "",
+        priority: "",
+        description: "",
+      })
+      setDueDate(undefined)
+
       onOpenChange(false)
-    }, 1000)
+      if (onTaskAdded) onTaskAdded()
+    } catch (error) {
+      console.error("Error adding task:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to add task. Please try again.",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -59,35 +167,47 @@ export function TaskDialog({ open, onOpenChange }: TaskDialogProps) {
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="taskName">Task Name</Label>
-              <Input id="taskName" placeholder="Design Homepage Mockup" required />
+              <Input
+                id="taskName"
+                placeholder="Design Homepage Mockup"
+                required
+                value={formData.name}
+                onChange={(e) => handleChange("name", e.target.value)}
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="project">Project</Label>
-                <Select required>
+                <Select required value={formData.projectId} onValueChange={(value) => handleChange("projectId", value)}>
                   <SelectTrigger id="project">
                     <SelectValue placeholder="Select project" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="website">Website Redesign</SelectItem>
-                    <SelectItem value="mobile">Mobile App Development</SelectItem>
-                    <SelectItem value="marketing">Annual Marketing Campaign</SelectItem>
-                    <SelectItem value="data">Data Migration</SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project._id} value={project._id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="subProject">Sub Project</Label>
-                <Select required>
+                <Select
+                  required
+                  value={formData.subProject}
+                  onValueChange={(value) => handleChange("subProject", value)}
+                  disabled={subProjects.length === 0}
+                >
                   <SelectTrigger id="subProject">
                     <SelectValue placeholder="Select sub project" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="frontend">Frontend Development</SelectItem>
-                    <SelectItem value="backend">Backend Development</SelectItem>
-                    <SelectItem value="auth">Authentication Module</SelectItem>
-                    <SelectItem value="content">Content Strategy</SelectItem>
-                    <SelectItem value="database">Database Design</SelectItem>
+                    {subProjects.map((subProject) => (
+                      <SelectItem key={subProject} value={subProject}>
+                        {subProject}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -95,22 +215,34 @@ export function TaskDialog({ open, onOpenChange }: TaskDialogProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="assignedTo">Assigned To</Label>
-                <Select required>
+                <Select
+                  required
+                  value={formData.assignedTo}
+                  onValueChange={(value) => handleChange("assignedTo", value)}
+                >
                   <SelectTrigger id="assignedTo">
                     <SelectValue placeholder="Select employee" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="john">John Smith</SelectItem>
-                    <SelectItem value="emily">Emily Davis</SelectItem>
-                    <SelectItem value="robert">Robert Wilson</SelectItem>
-                    <SelectItem value="michael">Michael Chen</SelectItem>
-                    <SelectItem value="jennifer">Jennifer Lee</SelectItem>
+                    {employees.map((employee: any) => (
+                      <SelectItem key={employee._id} value={employee._id}>
+                        {employee.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="estimatedTime">Estimated Hours</Label>
-                <Input id="estimatedTime" type="number" min="1" placeholder="8" required />
+                <Input
+                  id="estimatedTime"
+                  type="number"
+                  min="1"
+                  placeholder="8"
+                  required
+                  value={formData.estimatedTime}
+                  onChange={(e) => handleChange("estimatedTime", e.target.value)}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -133,22 +265,28 @@ export function TaskDialog({ open, onOpenChange }: TaskDialogProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="priority">Priority</Label>
-                <Select required>
+                <Select required value={formData.priority} onValueChange={(value) => handleChange("priority", value)}>
                   <SelectTrigger id="priority">
                     <SelectValue placeholder="Select priority" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
+                    <SelectItem value="Low">Low</SelectItem>
+                    <SelectItem value="Medium">Medium</SelectItem>
+                    <SelectItem value="High">High</SelectItem>
+                    <SelectItem value="Urgent">Urgent</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
-              <Textarea id="description" placeholder="Task description..." className="h-24" />
+              <Textarea
+                id="description"
+                placeholder="Task description..."
+                className="h-24"
+                value={formData.description}
+                onChange={(e) => handleChange("description", e.target.value)}
+              />
             </div>
           </div>
           <DialogFooter>

@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuthContext } from "@/components/auth-provider"
-import { SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD } from "@/lib/auth"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -30,7 +29,7 @@ export default function LoginPage() {
       if (result.success) {
         toast({
           title: "Login successful",
-          description: "Welcome to TimeTrack AI",
+          description: "Welcome to Techmagnate Time Management",
         })
         router.push("/dashboard")
       } else {
@@ -59,8 +58,8 @@ export default function LoginPage() {
           <CardDescription>Enter your credentials to access your account</CardDescription>
           <div className="mt-4 rounded-md bg-blue-50 p-3 text-sm">
             <p className="font-medium text-blue-800">Super Admin Credentials:</p>
-            <p className="text-blue-700">Email: {SUPER_ADMIN_EMAIL}</p>
-            <p className="text-blue-700">Password: {SUPER_ADMIN_PASSWORD}</p>
+            <p className="text-blue-700">Email: nirdosh.tyagi@techmagnate.com</p>
+            <p className="text-blue-700">Password: tyagi321</p>
           </div>
         </CardHeader>
         <form onSubmit={handleLogin}>
@@ -70,7 +69,7 @@ export default function LoginPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="name@company.com"
+                placeholder="name@techmagnate.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

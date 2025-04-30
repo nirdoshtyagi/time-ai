@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -27,27 +27,161 @@ import { Switch } from "@/components/ui/switch"
 interface TimeEntryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  projects: any[]
+  onTimeEntryAdded?: () => void
 }
 
-export function TimeEntryDialog({ open, onOpenChange }: TimeEntryDialogProps) {
+export function TimeEntryDialog({ open, onOpenChange, projects = [], onTimeEntryAdded }: TimeEntryDialogProps) {
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [date, setDate] = useState<Date>(new Date())
   const [aiUsed, setAiUsed] = useState(false)
+  const [tasks, setTasks] = useState([])
+  const [subProjects, setSubProjects] = useState<string[]>([])
+  const [aiTools, setAiTools] = useState([])
+
+  const [formData, setFormData] = useState({
+    projectId: "",
+    project: "",
+    subProject: "",
+    taskId: "",
+    task: "",
+    timeSpent: "",
+    aiTool: "",
+    timeSaved: "",
+    notes: "",
+  })
+
+  useEffect(() => {
+    if (open) {
+      fetchAiTools()
+    }
+  }, [open])
+
+  useEffect(() => {
+    // Update sub projects when project changes
+    if (formData.projectId) {
+      const selectedProject = projects.find((p) => p._id === formData.projectId)
+      if (selectedProject && selectedProject.subProjects) {
+        setSubProjects(selectedProject.subProjects)
+        setFormData((prev) => ({ ...prev, project: selectedProject.name }))
+      } else {
+        setSubProjects([])
+      }
+    } else {
+      setSubProjects([])
+    }
+    // Reset task when project changes
+    setFormData((prev) => ({ ...prev, taskId: "", task: "", subProject: "" }))
+    setTasks([])
+  }, [formData.projectId, projects])
+
+  useEffect(() => {
+    // Fetch tasks when project and subProject are selected
+    if (formData.projectId && formData.subProject) {
+      fetchTasks(formData.projectId, formData.subProject)
+    }
+  }, [formData.projectId, formData.subProject])
+
+  const fetchTasks = async (projectId: string, subProject: string) => {
+    try {
+      const response = await fetch(`/api/tasks?project=${projectId}&subProject=${subProject}`)
+      if (!response.ok) throw new Error("Failed to fetch tasks")
+      const data = await response.json()
+      setTasks(data)
+    } catch (error) {
+      console.error("Error fetching tasks:", error)
+    }
+  }
+
+  const fetchAiTools = async () => {
+    try {
+      const response = await fetch("/api/ai-tools")
+      if (!response.ok) throw new Error("Failed to fetch AI tools")
+      const data = await response.json()
+      setAiTools(data)
+    } catch (error) {
+      console.error("Error fetching AI tools:", error)
+    }
+  }
+
+  const handleChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleTaskChange = (taskId: string) => {
+    const selectedTask = tasks.find((t: any) => t._id === taskId)
+    if (selectedTask) {
+      setFormData((prev) => ({
+        ...prev,
+        taskId: taskId,
+        task: selectedTask.name,
+      }))
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const timeEntryData = {
+        projectId: formData.projectId,
+        project: formData.project,
+        subProject: formData.subProject,
+        taskId: formData.taskId,
+        task: formData.task,
+        date: date,
+        timeSpent: Number.parseFloat(formData.timeSpent),
+        aiUsed: aiUsed,
+        aiTool: aiUsed ? formData.aiTool : "",
+        timeSaved: aiUsed ? Number.parseFloat(formData.timeSaved) : 0,
+        status: "Completed",
+        notes: formData.notes,
+      }
+
+      const response = await fetch("/api/time-entries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(timeEntryData),
+      })
+
+      if (!response.ok) throw new Error("Failed to add time entry")
+
       toast({
         title: "Time entry logged successfully",
         description: "Your time entry has been recorded.",
       })
-      setIsSubmitting(false)
+
+      // Reset form
+      setFormData({
+        projectId: "",
+        project: "",
+        subProject: "",
+        taskId: "",
+        task: "",
+        timeSpent: "",
+        aiTool: "",
+        timeSaved: "",
+        notes: "",
+      })
+      setDate(new Date())
+      setAiUsed(false)
+
       onOpenChange(false)
-    }, 1000)
+      if (onTimeEntryAdded) onTimeEntryAdded()
+    } catch (error) {
+      console.error("Error adding time entry:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to add time entry. Please try again.",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -62,46 +196,52 @@ export function TimeEntryDialog({ open, onOpenChange }: TimeEntryDialogProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="project">Project</Label>
-                <Select required>
+                <Select required value={formData.projectId} onValueChange={(value) => handleChange("projectId", value)}>
                   <SelectTrigger id="project">
                     <SelectValue placeholder="Select project" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="website">Website Redesign</SelectItem>
-                    <SelectItem value="mobile">Mobile App Development</SelectItem>
-                    <SelectItem value="marketing">Annual Marketing Campaign</SelectItem>
-                    <SelectItem value="data">Data Migration</SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project._id} value={project._id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="subProject">Sub Project</Label>
-                <Select required>
+                <Select
+                  required
+                  value={formData.subProject}
+                  onValueChange={(value) => handleChange("subProject", value)}
+                  disabled={subProjects.length === 0}
+                >
                   <SelectTrigger id="subProject">
                     <SelectValue placeholder="Select sub project" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="frontend">Frontend Development</SelectItem>
-                    <SelectItem value="backend">Backend Development</SelectItem>
-                    <SelectItem value="auth">Authentication Module</SelectItem>
-                    <SelectItem value="content">Content Strategy</SelectItem>
-                    <SelectItem value="database">Database Design</SelectItem>
+                    {subProjects.map((subProject) => (
+                      <SelectItem key={subProject} value={subProject}>
+                        {subProject}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="task">Task</Label>
-              <Select required>
+              <Select required value={formData.taskId} onValueChange={handleTaskChange} disabled={tasks.length === 0}>
                 <SelectTrigger id="task">
                   <SelectValue placeholder="Select task" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="design">Design Homepage Mockup</SelectItem>
-                  <SelectItem value="auth">Implement User Authentication</SelectItem>
-                  <SelectItem value="content">Create Content Strategy</SelectItem>
-                  <SelectItem value="database">Database Schema Design</SelectItem>
-                  <SelectItem value="testing">User Testing Coordination</SelectItem>
+                  {tasks.map((task: any) => (
+                    <SelectItem key={task._id} value={task._id}>
+                      {task.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -125,7 +265,16 @@ export function TimeEntryDialog({ open, onOpenChange }: TimeEntryDialogProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="timeSpent">Hours Spent</Label>
-                <Input id="timeSpent" type="number" min="0.5" step="0.5" placeholder="8" required />
+                <Input
+                  id="timeSpent"
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  placeholder="8"
+                  required
+                  value={formData.timeSpent}
+                  onChange={(e) => handleChange("timeSpent", e.target.value)}
+                />
               </div>
             </div>
             <div className="space-y-2">
@@ -138,28 +287,47 @@ export function TimeEntryDialog({ open, onOpenChange }: TimeEntryDialogProps) {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="aiTool">AI Tool</Label>
-                  <Select required>
+                  <Select
+                    required={aiUsed}
+                    value={formData.aiTool}
+                    onValueChange={(value) => handleChange("aiTool", value)}
+                  >
                     <SelectTrigger id="aiTool">
                       <SelectValue placeholder="Select AI tool" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="chatgpt">ChatGPT</SelectItem>
-                      <SelectItem value="copilot">GitHub Copilot</SelectItem>
-                      <SelectItem value="midjourney">Midjourney</SelectItem>
-                      <SelectItem value="claude">Claude</SelectItem>
-                      <SelectItem value="jasper">Jasper</SelectItem>
+                      {aiTools.map((tool: any) => (
+                        <SelectItem key={tool._id} value={tool.name}>
+                          {tool.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="timeSaved">Hours Saved</Label>
-                  <Input id="timeSaved" type="number" min="0.5" step="0.5" placeholder="2" />
+                  <Input
+                    id="timeSaved"
+                    type="number"
+                    min="0.5"
+                    step="0.5"
+                    placeholder="2"
+                    required={aiUsed}
+                    value={formData.timeSaved}
+                    onChange={(e) => handleChange("timeSaved", e.target.value)}
+                  />
                 </div>
               </div>
             )}
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
-              <Textarea id="notes" placeholder="Additional notes..." className="h-24" />
+              <Textarea
+                id="notes"
+                placeholder="Additional notes..."
+                className="h-24"
+                value={formData.notes}
+                onChange={(e) => handleChange("notes", e.target.value)}
+              />
             </div>
           </div>
           <DialogFooter>
