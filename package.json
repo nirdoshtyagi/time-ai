@@ -58,6 +58,8 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
+    "immer": "latest",
+    "use-sync-external-store": "latest",
     "socks": "latest",
     "snappy": "latest",
     "kerberos": "latest",
@@ -65,10 +67,8 @@
     "@mongodb-js/zstd": "latest",
     "mongodb-client-encryption": "latest",
     "@aws-sdk/credential-providers": "latest",
-    "immer": "latest",
-    "use-sync-external-store": "latest",
-    "mongodb": "latest",
-    "zustand": "latest"
+    "zustand": "latest",
+    "mongodb": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

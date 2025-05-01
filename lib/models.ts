@@ -92,3 +92,5 @@ export interface AITool {
   createdAt?: Date
   updatedAt?: Date
 }
+
+export type Employee = User

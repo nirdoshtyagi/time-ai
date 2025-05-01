@@ -1,199 +1,134 @@
 "use server"
 
-import { Collections, find, getUserHierarchy } from "../db-service"
-import { getCurrentUser } from "./auth-actions"
+import { connectToDatabase } from "../mongodb"
+import { TimeEntry, Task, Project, Employee, Department, AITool } from "../models"
 
-export async function getPerformanceData(departmentFilter = "", dateRange = {}) {
+export async function getPerformanceData(startDate?: string, endDate?: string, departmentId?: string) {
   try {
-    const currentUser = await getCurrentUser()
-    if (!currentUser) throw new Error("Not authenticated")
+    await connectToDatabase()
 
-    // Build query for tasks
-    const taskQuery: any = {}
-    const timeEntryQuery: any = {}
+    const matchStage: any = {}
 
-    let users: any[] = [] // Declare users variable
-    let hierarchyUsers: any[] = [] // Declare hierarchyUsers variable
-
-    if (departmentFilter && departmentFilter !== "all") {
-      // We need to get users from this department first
-      users = await find(Collections.USERS, { department: departmentFilter })
-      const userIds = users.map((user) => user._id.toString())
-
-      taskQuery.assignedTo = { $in: userIds }
-      timeEntryQuery.userId = { $in: userIds }
-    }
-
-    if (dateRange && dateRange.from && dateRange.to) {
-      timeEntryQuery.date = {
-        $gte: new Date(dateRange.from),
-        $lte: new Date(dateRange.to),
+    if (startDate && endDate) {
+      matchStage.date = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
       }
     }
 
-    // For non-admin users, only show data from their hierarchy
-    if (currentUser.role !== "super_admin" && currentUser.role !== "admin") {
-      hierarchyUsers = await getUserHierarchy(currentUser._id.toString())
-      const hierarchyUserIds = hierarchyUsers.map((user) => user._id.toString())
+    // Get all time entries
+    const timeEntries = await TimeEntry.find(matchStage).lean()
 
-      taskQuery.assignedTo = { $in: hierarchyUserIds }
-      timeEntryQuery.userId = { $in: hierarchyUserIds }
-    }
-
-    // Get tasks and time entries
-    const tasks = await find(Collections.TASKS, taskQuery)
-    const timeEntries = await find(Collections.TIME_ENTRIES, timeEntryQuery)
+    // Get all employees
+    const employees = await Employee.find({}).lean()
 
     // Get all departments
-    const departments = await find(Collections.DEPARTMENTS)
+    const departments = await Department.find({}).lean()
 
-    // Calculate performance metrics by department
-    const performanceData = departments.map((dept) => {
-      // Get users in this department
-      const deptUsers =
-        currentUser.role === "super_admin" || currentUser.role === "admin"
-          ? users.filter((user) => user.department === dept.name)
-          : hierarchyUsers.filter((user) => user.department === dept.name)
+    // Calculate performance metrics
+    const employeePerformance = employees.map((employee) => {
+      const employeeTimeEntries = timeEntries.filter((entry) => entry.employeeId.toString() === employee._id.toString())
 
-      const deptUserIds = deptUsers.map((user) => user._id.toString())
+      const totalHours = employeeTimeEntries.reduce((sum, entry) => sum + entry.hours, 0)
 
-      // Get tasks for these users
-      const deptTasks = tasks.filter((task) => deptUserIds.includes(task.assignedTo))
-      const completedTasks = deptTasks.filter((task) => task.status === "Completed")
-
-      // Get time entries for these users
-      const deptTimeEntries = timeEntries.filter((entry) => deptUserIds.includes(entry.userId))
-
-      // Calculate metrics
-      const tasksCompleted = completedTasks.length
-
-      // Time efficiency: actual time vs estimated time (lower is better)
-      const totalEstimatedTime = deptTasks.reduce((sum, task) => sum + task.estimatedTime, 0)
-      const totalActualTime = deptTimeEntries.reduce((sum, entry) => sum + entry.timeSpent, 0)
-      const timeEfficiency =
-        totalEstimatedTime > 0 ? Math.min(100, Math.round((totalEstimatedTime / (totalActualTime || 1)) * 100)) : 0
-
-      // AI usage percentage
-      const aiEntries = deptTimeEntries.filter((entry) => entry.aiUsed)
-      const aiUsage = deptTimeEntries.length > 0 ? Math.round((aiEntries.length / deptTimeEntries.length) * 100) : 0
+      const department = departments.find((dept) => dept._id.toString() === employee.departmentId?.toString())
 
       return {
-        name: dept.name,
-        "Tasks Completed": tasksCompleted,
-        "Time Efficiency": timeEfficiency,
-        "AI Usage": aiUsage,
+        id: employee._id.toString(),
+        name: `${employee.firstName} ${employee.lastName}`,
+        department: department?.name || "Unassigned",
+        departmentId: department?._id.toString() || "",
+        totalHours,
+        productivity: Math.min((totalHours / 40) * 100, 100), // Assuming 40 hours is 100% productivity
       }
     })
 
-    return performanceData
+    // Filter by department if specified
+    const filteredPerformance = departmentId
+      ? employeePerformance.filter((emp) => emp.departmentId === departmentId)
+      : employeePerformance
+
+    return filteredPerformance
   } catch (error) {
-    console.error("Error fetching performance data:", error)
-    throw new Error("Failed to fetch performance data")
+    console.error("Error getting performance data:", error)
+    throw error
   }
 }
 
 export async function getAIAdoptionData() {
   try {
-    const currentUser = await getCurrentUser()
-    if (!currentUser) throw new Error("Not authenticated")
+    await connectToDatabase()
 
-    // Get all departments
-    const departments = await find(Collections.DEPARTMENTS)
+    // Get all AI tools
+    const aiTools = await AITool.find({}).lean()
 
-    // Get all time entries
-    const timeEntryQuery: any = {}
+    // Get all time entries with AI tool usage
+    const timeEntries = await TimeEntry.find({ aiToolId: { $exists: true, $ne: null } }).lean()
 
-    // For non-admin users, only show data from their hierarchy
-    if (currentUser.role !== "super_admin" && currentUser.role !== "admin") {
-      const hierarchyUsers = await getUserHierarchy(currentUser._id.toString())
-      const hierarchyUserIds = hierarchyUsers.map((user) => user._id.toString())
+    // Get all employees
+    const employees = await Employee.find({}).lean()
 
-      timeEntryQuery.userId = { $in: hierarchyUserIds }
-    }
+    // Calculate AI adoption metrics
+    const aiAdoption = aiTools.map((tool) => {
+      const toolTimeEntries = timeEntries.filter(
+        (entry) => entry.aiToolId && entry.aiToolId.toString() === tool._id.toString(),
+      )
 
-    const timeEntries = await find(Collections.TIME_ENTRIES, timeEntryQuery)
+      const totalHours = toolTimeEntries.reduce((sum, entry) => sum + entry.hours, 0)
 
-    // Calculate AI adoption metrics by department
-    const aiAdoptionData = await Promise.all(departments.map(async dept => {
-      // Get users in this department
-      const deptUsers = await find(Collections.USERS, { department: dept.name })
-      const deptUserIds = deptUsers.map(user => user._id.toString())
-      
-      // Get time entries for these users
-      const deptTimeEntries = timeEntries.filter(entry => deptUserIds.includes(entry.userId))
-      const aiEntries = deptTimeEntries.filter(entry => entry.aiUsed)
-      
-      // Calculate AI adoption rate
-      const aiAdoptionRate = deptTimeEntries.length > 0
-        ? Math.round((aiEntries.length / deptTimeEntries.length) * 100)
-        : 0
-      
+      const uniqueUsers = new Set(toolTimeEntries.map((entry) => entry.employeeId.toString())).size
+
       return {
-        name: dept.name,
-        value: aiAdoptionRate,
-        color: getColorForDepartment(dept.name)
+        id: tool._id.toString(),
+        name: tool.name,
+        totalHours,
+        uniqueUsers,
+        adoptionRate: (uniqueUsers / employees.length) * 100,
       }
     })
-    \
-    return aiAdoptionData
+
+    return aiAdoption
   } catch (error) {
-    console.error("Error fetching AI adoption data:", error)
-    throw new Error("Failed to fetch AI adoption data")
+    console.error("Error getting AI adoption data:", error)
+    throw error
   }
-}
-
-// Helper function to get consistent colors for departments
-function getColorForDepartment(department: string) {
-  const colorMap: Record<string, string> = {
-    Engineering: "#4f46e5",
-    Marketing: "#06b6d4",
-    Design: "#f59e0b",
-    Product: "#10b981",
-    HR: "#ef4444",
-    IT: "#8b5cf6",
-    Finance: "#ec4899",
-    Sales: "#14b8a6",
-  }
-
-  return colorMap[department] || "#6b7280" // Default gray color
 }
 
 export async function getProjectStatusData() {
   try {
-    const currentUser = await getCurrentUser()
-    if (!currentUser) throw new Error("Not authenticated")
+    await connectToDatabase()
 
-    // Build query for projects
-    const projectQuery: any = {}
+    // Get all projects
+    const projects = await Project.find({}).lean()
 
-    // For non-admin users, only show data from their hierarchy
-    if (currentUser.role !== "super_admin" && currentUser.role !== "admin") {
-      const hierarchyUsers = await getUserHierarchy(currentUser._id.toString())
-      const hierarchyUserIds = hierarchyUsers.map((user) => user._id.toString())
+    // Get all tasks
+    const tasks = await Task.find({}).lean()
 
-      projectQuery.$or = [{ department: currentUser.department }, { assignedEmployees: { $in: hierarchyUserIds } }]
-    }
+    // Calculate project status metrics
+    const projectStatus = projects.map((project) => {
+      const projectTasks = tasks.filter((task) => task.projectId.toString() === project._id.toString())
 
-    const projects = await find(Collections.PROJECTS, projectQuery)
+      const totalTasks = projectTasks.length
+      const completedTasks = projectTasks.filter((task) => task.status === "Completed").length
+      const inProgressTasks = projectTasks.filter((task) => task.status === "In Progress").length
+      const pendingTasks = projectTasks.filter((task) => task.status === "Pending").length
 
-    // Format data for chart
-    const projectStatusData = projects.map((project) => ({
-      name: project.name,
-      value: project.progress,
-      color: getColorForProject(project.progress),
-    }))
+      const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0
 
-    return projectStatusData
+      return {
+        id: project._id.toString(),
+        name: project.name,
+        totalTasks,
+        completedTasks,
+        inProgressTasks,
+        pendingTasks,
+        progress,
+      }
+    })
+
+    return projectStatus
   } catch (error) {
-    console.error("Error fetching project status data:", error)
-    throw new Error("Failed to fetch project status data")
+    console.error("Error getting project status data:", error)
+    throw error
   }
-}
-
-// Helper function to get color based on project progress
-function getColorForProject(progress: number) {
-  if (progress < 25) return "#ef4444" // Red
-  if (progress < 50) return "#f59e0b" // Amber
-  if (progress < 75) return "#3b82f6" // Blue
-  return "#10b981" // Green
 }
