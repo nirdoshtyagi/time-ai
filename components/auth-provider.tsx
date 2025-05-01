@@ -36,6 +36,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         manage_settings: 100,
         view_reports: 80,
         view_ai_adoption: 60,
+        canCreateEmployee: 80,
+        canEditEmployee: 80,
+        canDeleteEmployee: 100,
+        canCreateProject: 60,
+        canEditProject: 60,
+        canDeleteProject: 80,
+        canCreateTask: 60,
+        canEditTask: 40,
+        canDeleteTask: 60,
+        canManageSettings: 100,
+        canEditDepartments: 100,
       }[permission] || 100
 
     return roleAccessLevels[user.role] >= requiredLevel
