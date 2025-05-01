@@ -4,7 +4,6 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/components/auth-provider"
-import { initializeApp } from "@/lib/init-db"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -14,9 +13,6 @@ export const metadata = {
   description: "Track employee tasks, project efficiency, and AI tool adoption",
     generator: 'v0.dev'
 }
-
-// Initialize the database
-initializeApp().catch(console.error)
 
 export default function RootLayout({
   children,

@@ -40,6 +40,11 @@ export default clientPromise
 
 // Export connectToDatabase function for compatibility
 export async function connectToDatabase() {
-  const client = await clientPromise
-  return client.db("time_management")
+  try {
+    const client = await clientPromise
+    return client.db("time_management")
+  } catch (error) {
+    console.error("Failed to connect to database:", error)
+    throw error
+  }
 }

@@ -114,6 +114,7 @@ export async function initializeApp() {
     return { success: true }
   } catch (error) {
     console.error("Database initialization failed:", error)
+    // Don't throw the error, just return failure
     return { success: false, error }
   }
 }

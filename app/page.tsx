@@ -1,5 +1,10 @@
-import { redirect } from "next/navigation"
-
 export default function Home() {
-  redirect("/login")
+  // Use a client-side redirect to avoid build-time errors
+  return (
+    <script
+      dangerouslySetInnerHTML={{
+        __html: `window.location.href = "/login"`,
+      }}
+    />
+  )
 }
